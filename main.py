@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 from __future__ import print_function
 import argparse
 import os
@@ -23,7 +26,7 @@ from type_specific_network import TypeSpecificNet
 
 # Training settings
 parser = argparse.ArgumentParser(description='Fashion Compatibility Example')
-parser.add_argument('--batch-size', type=int, default=256, metavar='N',
+parser.add_argument('--batch-size', type=int, default=4, metavar='N',
                     help='input batch size for training (default: 256)')
 parser.add_argument('--epochs', type=int, default=10, metavar='N',
                     help='number of epochs to train (default: 10)')
@@ -43,7 +46,7 @@ parser.add_argument('--name', default='Type_Specific_Fashion_Compatibility', typ
                     help='name of experiment')
 parser.add_argument('--polyvore_split', default='nondisjoint', type=str,
                     help='specifies the split of the polyvore data (either disjoint or nondisjoint)')
-parser.add_argument('--datadir', default='data', type=str,
+parser.add_argument('--datadir', default='D:/data', type=str,
                     help='directory of the polyvore outfits dataset (default: data)')
 parser.add_argument('--test', dest='test', action='store_true', default=False,
                     help='To only run inference on test set')
@@ -90,45 +93,52 @@ def main():
     fn = os.path.join(args.datadir, 'polyvore_outfits', 'polyvore_item_metadata.json')
     meta_data = json.load(open(fn, 'r'))
     text_feature_dim = 6000
-    kwargs = {'num_workers': 8, 'pin_memory': True} if args.cuda else {}
+    #kwargs = {'num_workers': 8, 'pin_memory': True} if args.cuda else {}
+    kwargs = {'pin_memory': True} if args.cuda else {}
     test_loader = torch.utils.data.DataLoader(
         TripletImageLoader(args, 'test', meta_data,
                            transform=transforms.Compose([
-                               transforms.Scale(112),
+                               transforms.Resize(112),
                                transforms.CenterCrop(112),
                                transforms.ToTensor(),
                                normalize,
                            ])),
         batch_size=args.batch_size, shuffle=False, **kwargs)
+    print("loader success")
 
     model = Resnet_18.resnet18(pretrained=True, embedding_size=args.dim_embed)
     csn_model = TypeSpecificNet(args, model, len(test_loader.dataset.typespaces))
+    print("model success")
 
     criterion = torch.nn.MarginRankingLoss(margin = args.margin)
     tnet = Tripletnet(args, csn_model, text_feature_dim, criterion)
     if args.cuda:
         tnet.cuda()
+    print("network success")
 
     train_loader = torch.utils.data.DataLoader(
         TripletImageLoader(args, 'train', meta_data,
                            text_dim=text_feature_dim,
                            transform=transforms.Compose([
-                               transforms.Scale(112),
+                               transforms.Resize(112),
                                transforms.CenterCrop(112),
                                transforms.RandomHorizontalFlip(),
                                transforms.ToTensor(),
                                normalize,
                            ])),
         batch_size=args.batch_size, shuffle=True, **kwargs)
+    print("train load success")
     val_loader = torch.utils.data.DataLoader(
         TripletImageLoader(args, 'valid', meta_data,
                            transform=transforms.Compose([
-                               transforms.Scale(112),
+                               transforms.Resize(112),
                                transforms.CenterCrop(112),
                                transforms.ToTensor(),
                                normalize,
                            ])),
         batch_size=args.batch_size, shuffle=False, **kwargs)
+
+    print("validation load success")
 
     best_acc = 0
     # optionally resume from a checkpoint
@@ -184,51 +194,54 @@ def train(train_loader, tnet, criterion, optimizer, epoch):
     # switch to train mode
     tnet.train()
     for batch_idx, (img1, desc1, has_text1, img2, desc2, has_text2, img3, desc3, has_text3, condition) in enumerate(train_loader):
-        anchor = TrainData(img1, desc1, has_text1, condition)
-        close = TrainData(img2, desc2, has_text2)
-        far = TrainData(img3, desc3, has_text3)
 
-        # compute output
-        acc, loss_triplet, loss_mask, loss_embed, loss_vse, loss_sim_t, loss_sim_i = tnet(anchor, far, close)
-        
-        # encorages similar text inputs (sim_t) and image inputs (sim_i) to
-        # embed close to each other, images operate on the general embedding
-        loss_sim = args.sim_t_loss * loss_sim_t + args.sim_i_loss * loss_sim_i
-        
-        # cross-modal similarity regularizer on the general embedding
-        loss_vse_w = args.vse_loss * loss_vse
-        
-        # sparsity and l2 regularizer
-        loss_reg = args.embed_loss * loss_embed + args.mask_loss * loss_mask
+        if batch_idx % 10 == 0:
 
-        loss = loss_triplet + loss_reg
-        if args.vse_loss > 0:
-            loss += loss_vse_w
-        if args.sim_t_loss > 0 or args.sim_i_loss > 0:
-            loss += loss_sim
-            
-        num_items = len(anchor)
-        # measure accuracy and record loss
-        losses.update(loss_triplet.data[0], num_items)
-        accs.update(acc.data[0], num_items)
-        emb_norms.update(loss_embed.data[0])
-        mask_norms.update(loss_mask.data[0])
-            
-        # compute gradient and do optimizer step
-        optimizer.zero_grad()
+            anchor = TrainData(img1, desc1, has_text1, condition)
+            close = TrainData(img2, desc2, has_text2)
+            far = TrainData(img3, desc3, has_text3)
 
-        if loss == loss:
-            loss.backward()
-            optimizer.step()
+            # compute output
+            acc, loss_triplet, loss_mask, loss_embed, loss_vse, loss_sim_t, loss_sim_i = tnet(anchor, far, close)
 
-        if batch_idx % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{}]\t'
-                  'Loss: {:.4f} ({:.4f}) \t'
-                  'Acc: {:.2f}% ({:.2f}%) \t'
-                  'Emb_Norm: {:.2f} ({:.2f})'.format(
-                epoch, batch_idx * num_items, len(train_loader.dataset),
-                losses.val, losses.avg, 
-                100. * accs.val, 100. * accs.avg, emb_norms.val, emb_norms.avg))
+            # encorages similar text inputs (sim_t) and image inputs (sim_i) to
+            # embed close to each other, images operate on the general embedding
+            loss_sim = args.sim_t_loss * loss_sim_t + args.sim_i_loss * loss_sim_i
+
+            # cross-modal similarity regularizer on the general embedding
+            loss_vse_w = args.vse_loss * loss_vse
+
+            # sparsity and l2 regularizer
+            loss_reg = args.embed_loss * loss_embed + args.mask_loss * loss_mask
+
+            loss = loss_triplet + loss_reg
+            if args.vse_loss > 0:
+                loss += loss_vse_w
+            if args.sim_t_loss > 0 or args.sim_i_loss > 0:
+                loss += loss_sim
+
+            num_items = len(anchor)
+            # measure accuracy and record loss
+            losses.update(loss_triplet.data, num_items)
+            accs.update(acc.data, num_items)
+            emb_norms.update(loss_embed.data)
+            mask_norms.update(loss_mask.data)
+
+            # compute gradient and do optimizer step
+            optimizer.zero_grad()
+
+            if loss == loss:
+                loss.backward()
+                optimizer.step()
+
+            if batch_idx % args.log_interval == 0:
+                print('Train Epoch: {} [{}/{}]\t'
+                      'Loss: {:.4f} ({:.4f}) \t'
+                      'Acc: {:.2f}% ({:.2f}%) \t'
+                      'Emb_Norm: {:.2f} ({:.2f})'.format(
+                    epoch, batch_idx * num_items, len(train_loader.dataset),
+                    losses.val.item(), losses.avg.item(),
+                    100. * accs.val.item(), 100. * accs.avg.item(), emb_norms.val.item(), emb_norms.avg.item()))
 
 
 def test(test_loader, tnet):

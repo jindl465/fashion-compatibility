@@ -17,6 +17,7 @@ def selective_margin_loss(pos_samples, neg_samples, margin, has_sample):
     """
     margin_diff = torch.clamp((pos_samples - neg_samples) + margin, min=0, max=1e6)
     num_sample = max(torch.sum(has_sample), 1)
+    # has_sample = torch.zeros(has_sample.shape[0]).cuda()
     return torch.sum(margin_diff * has_sample) / num_sample
 
 def accuracy(pos_samples, neg_samples):
@@ -45,7 +46,8 @@ class EmbedBranch(nn.Module):
         
         # L2 normalize each feature vector
         norm = torch.norm(x, p=2, dim=1) + 1e-10
-        x = x / norm.expand_as(x)
+        norm_expanded = norm.unsqueeze(-1).expand_as(x)
+        x = x / norm_expanded
         return x
 
 class Tripletnet(nn.Module):
