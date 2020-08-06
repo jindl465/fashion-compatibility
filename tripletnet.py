@@ -111,6 +111,7 @@ class Tripletnet(nn.Module):
             y: Distant (negative) data
             z: Close (positive) data
         """
+
         desc_x = self.text_branch(x.text)
         desc_y = self.text_branch(y.text)
         desc_z = self.text_branch(z.text)

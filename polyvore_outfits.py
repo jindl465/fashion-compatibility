@@ -10,6 +10,7 @@ import pickle
 import h5py
 from sklearn.metrics import roc_auc_score
 from torch.autograd import Variable
+from rake_nltk import Rake
 
 def default_image_loader(path):
     return Image.open(path).convert('RGB')
@@ -168,7 +169,7 @@ class TripletImageLoader(torch.utils.data.Dataset):
                     desc = meta_data[im]['url_name']
                     
                 desc = desc.replace('\n','').encode('ascii', 'ignore').strip().lower()
-                
+
                 # sometimes descriptions didn't map to any known words so they were
                 # removed, so only add those which have a valid feature representation
                 if desc and desc in self.desc2vecs:
