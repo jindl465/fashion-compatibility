@@ -10,7 +10,7 @@ import pickle
 import h5py
 from sklearn.metrics import roc_auc_score
 from torch.autograd import Variable
-from rake_nltk import Rake
+import test_nlp
 
 def default_image_loader(path):
     return Image.open(path).convert('RGB')
@@ -163,6 +163,7 @@ class TripletImageLoader(torch.utils.data.Dataset):
                     self.desc2vecs[label] = vec
                     
             self.im2desc = {}
+            self.n_desc2vec = {}
             for im in imnames:
                 desc = meta_data[im]['title']
                 if not desc:
@@ -170,10 +171,18 @@ class TripletImageLoader(torch.utils.data.Dataset):
                     
                 desc = desc.replace('\n','').encode('ascii', 'ignore').strip().lower()
 
+                desc = desc.decode('utf-8')
+
+                if desc:
+                    #b_desc = test_nlp.BERT(desc)
+                    self.im2desc[im] = desc
+                    #self.n_desc2vec[desc] = b_desc
+
                 # sometimes descriptions didn't map to any known words so they were
                 # removed, so only add those which have a valid feature representation
-                if desc and desc in self.desc2vecs:
-                    self.im2desc[im] = desc
+                # if desc and desc in self.desc2vecs:
+                #     b_desc = test_nlp.BERT(desc)
+                #     self.im2desc[im] = desc
 
             # At train time we pull the list of outfits and enumerate the pairwise
             # comparisons between them to train with.  Negatives are pulled by the
@@ -209,7 +218,7 @@ class TripletImageLoader(torch.utils.data.Dataset):
 
         if image_id in self.im2desc:
             text = self.im2desc[image_id]
-            text_features = self.desc2vecs[text]
+            text_features = self.n_desc2vecs[text]
             has_text = 1
         else:
             text_features = np.zeros(self.text_feat_dim, np.float32)

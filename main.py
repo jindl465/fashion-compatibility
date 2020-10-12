@@ -92,7 +92,7 @@ def main():
 
     fn = os.path.join(args.datadir, 'polyvore_outfits', 'polyvore_item_metadata.json')
     meta_data = json.load(open(fn, 'r'))
-    text_feature_dim = 6000
+    text_feature_dim = 768
     #kwargs = {'num_workers': 8, 'pin_memory': True} if args.cuda else {}
     kwargs = {'pin_memory': True} if args.cuda else {}
     test_loader = torch.utils.data.DataLoader(
@@ -186,6 +186,7 @@ def main():
     test_acc = test(test_loader, tnet)
 
 def train(train_loader, tnet, criterion, optimizer, epoch):
+    print("train : " + str(epoch))
     losses = AverageMeter()
     accs = AverageMeter()
     emb_norms = AverageMeter()
